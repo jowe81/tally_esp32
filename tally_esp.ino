@@ -6,9 +6,9 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 //WiFi
-const char* ssid = "wnet2305n_guest";
-const char* password = "gewitter";
-const char* mqtt_server = "192.168.1.166";
+const char* ssid = "tenth-pd"; //"wnet2305n_guest";
+const char* password = "!mcP23017*"; //"gewitter";
+const char* mqtt_server = "192.168.7.198"; //"192.168.1.166";
 
 //MQTT
 const char mqtt_topic[] = "mpct/update/#";
@@ -198,21 +198,26 @@ void reconnect() {
       delay(5000);
     }
   }
+  //After connection, request snapshop from controller
+  client.publish("mpct/command/controllers", "{\"data\":{\"publishFullStatus\":{\"forceHardwareRead\":false}}}");
 }
 
 void setup() {
-  Serial.begin(115200);  
-  setup_wifi();
-  client.setServer(mqtt_server, 1883);
-  client.setCallback(callback);
   //Initialize LED pins
   pinMode(pinRed, OUTPUT);
   pinMode(pinGreen, OUTPUT);
   pinMode(pinBlue, OUTPUT);
+  Serial.begin(115200);  
+  setup_wifi();
+  //Setup MQTT
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
 }
 
 void setup_wifi() {
-  delay(10);
+  delay(100);
+  //Keep blue indicator on while trying to connect (turns off after successful MQTT connect)
+  digitalWrite(pinBlue, true);
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
