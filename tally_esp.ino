@@ -143,7 +143,7 @@ void callback(char* topic, byte* message, unsigned int length) {
 
   //Serial.print("Message arrived on topic: ");
   //Serial.println(topic);
-
+  bool changeOccurred = false; //flag to determine whether lights need to be updated
   if (topicStr.substring(0,17) == "mpct/update/Tally") {
     //Extract tally line no from topic string
     String tallyLineStr = topicStr.substring(17, topicStr.indexOf("."));    
@@ -156,33 +156,31 @@ void callback(char* topic, byte* message, unsigned int length) {
     //Extract the value/state for the tally line
     bool state = !data["data"]["status"]["value"];
 
-    //Update the line (returns false if line is not auditioned or value didn't change)
+    //Update the line (updatePgmLineState and updatePvwLineState return false if line is not auditioned or value didn't change)
     if (updatePgmLineState(lineNo, state)) {
+      changeOccurred = true;
       const bool newPgmLightStatus = getPgmLightStatus();
       if (pgmLightStatus != newPgmLightStatus) {
         //Light status changed
         pgmLightStatus = newPgmLightStatus;
         Serial.print("PGM: ");
         Serial.println(pgmLightStatus);
-        //Drive program light:
-        digitalWrite(pinRed, pgmLightStatus);
-        if (pgmLightStatus) {
-          //Program light is on, turn off pvw light regardless of line status
-          digitalWrite(pinGreen, false);
-        }
       }
-    }
-
-    if (updatePvwLineState(lineNo, state)) {
+    } else if (updatePvwLineState(lineNo, state)) {
+      changeOccurred = true;
       const bool newPvwLightStatus = getPvwLightStatus();
       if (pvwLightStatus != newPvwLightStatus) {
         //Light status changed
         pvwLightStatus = newPvwLightStatus;
         Serial.print("PVW: ");
         Serial.println(pvwLightStatus);
-        //Drive preview light (only if program light is off):        
-        digitalWrite(pinGreen, !pgmLightStatus && pvwLightStatus);
       }
+    }
+    if (changeOccurred) {
+        //Drive program light:
+        digitalWrite(pinRed, pgmLightStatus);
+        //Drive preview light:
+        digitalWrite(pinGreen, !pgmLightStatus && pvwLightStatus);
     }
   }
 }
