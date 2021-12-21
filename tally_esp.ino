@@ -53,13 +53,19 @@ void printLinesState() {
   }
 }
 
-void updateLineState(int lineNo, bool state) {
+//Return true if lineNo was valid, and its value changed
+bool updateLineState(int lineNo, bool state) {
   //Check if we're listening to this line (find index of element in linesToListenTo by value)
   int lineIndex = getLineIndex(lineNo);
   if (lineIndex > -1) {    
-    //Line was found, so update its state
-    linesState[lineIndex] = state;
+    //Line was found
+    if (linesState[lineIndex] != state) {
+      //State has changed
+      linesState[lineIndex] = state;
+      return true;
+    }
   }  
+  return false;
 }
 
 
@@ -95,13 +101,19 @@ void callback(char* topic, byte* message, unsigned int length) {
     String tallyLineStr = topicStr.substring(17, topicStr.indexOf("."));    
     int lineNo = tallyLineStr.toInt();
 
+
+
     //Parse message JSON into data object
     DynamicJsonDocument data(1024);
     deserializeJson(data, messageStr);
 
     //Extract the value/state for the tally line
     bool state = !data["data"]["status"]["value"];
-    updateLineState(lineNo, state);
+    if (updateLineState(lineNo, state)) {
+      Serial.print("Light: ");
+      Serial.println(getLightStatus());
+    }
+
   }
 }
 
