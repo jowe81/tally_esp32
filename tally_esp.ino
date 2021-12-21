@@ -11,38 +11,66 @@ const char* mqtt_server = "192.168.1.166";
 const char mqtt_topic[] = "mpct/update/#";
 
 //Tally Lines to listen to (device# on MPCT controller Tally)
-const int linesToListenTo[] = { 0, 2 }; //0: Cam 1 PGM, 2: Cam 2 PGM, 4: Cam 3 PGM
-const int noLines = 2; //Number of elements in linesToListenTo array;
-boolean linesState[noLines]; //Store current state of each line here
+const int pgmLinesToListenTo[] = { 0, 2 }; //0: Cam 1 PGM, 2: Cam 2 PGM, 4: Cam 3 PGM
+const int pvwLinesToListenTo[] = { 1, 3 }; //1: Cam 1 PVW, 3: Cam 2 PVW, 5: Cam 3 PVW
+const int noPgmLines = 2; //Number of elements in pgmLinesToListenTo array;
+const int noPvwLines = 2; //Number of elements in pvwLinesToListenTo array;
+boolean pgmLinesState[noPgmLines]; //Store current state of program lines here
+boolean pvwLinesState[noPvwLines]; //Store current state of preview lines here
 
-//Keep the current status of the tally light here
-bool lightStatus = false;
+//Keep the current status of the tally lights here
+bool pgmLightStatus = false;
+bool pvwLightStatus = false;
 
 //Status of blinking blue indicator
 bool blueStatus = true;
 
 //All lines off at init time
-void initLinesArray() {
-  for (int i = 0; i < noLines; i++) {
-    linesState[i] = false;
+void initLinesArrays() {
+  for (int i = 0; i < noPgmLines; i++) {
+    pgmLinesState[i] = false;
+  }
+  for (int i = 0; i < noPvwLines; i++) {
+    pvwLinesState[i] = false;
   }
 }
 
-//Return true if any of the auditioned tally lines are active
-bool getLightStatus() {
-  for (int i = 0; i < noLines; i++) {
-    if (linesState[i] == true) {
+//Return true if any of the auditioned program lines are active
+bool getPgmLightStatus() {
+  for (int i = 0; i < noPgmLines; i++) {
+    if (pgmLinesState[i] == true) {
       return true;
     }
   }
   return false;
 }
 
-//Return the index of the lineNo provided, or -1
-int getLineIndex(int lineNo) {
+//Return true if any of the auditioned preview lines are active
+bool getPvwLightStatus() {
+  for (int i = 0; i < noPvwLines; i++) {
+    if (pvwLinesState[i] == true) {
+      return true;
+    }
+  }
+  return false;
+}
+
+//Return the index of the program lineNo provided, or -1
+int getPgmLineIndex(int lineNo) {
   //Traverse the array to find the index of lineNo, if present  
-  for (int i = 0; i < noLines; i++) {
-    if (linesToListenTo[i] == lineNo) {
+  for (int i = 0; i < noPgmLines; i++) {
+    if (pgmLinesToListenTo[i] == lineNo) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+//Return the index of the preview lineNo provided, or -1
+int getPvwLineIndex(int lineNo) {
+  //Traverse the array to find the index of lineNo, if present  
+  for (int i = 0; i < noPvwLines; i++) {
+    if (pvwLinesToListenTo[i] == lineNo) {
       return i;
     }
   }
@@ -52,34 +80,46 @@ int getLineIndex(int lineNo) {
 //Print status of auditioned lines
 void printLinesState() {
   Serial.println("STATE OF LINES");
-  for (int i = 0; i < noLines; i++) {
-    Serial.print(linesToListenTo[i]);
+  for (int i = 0; i < noPgmLines; i++) {
+    Serial.print(pgmLinesToListenTo[i]);
     Serial.print(":");
-    Serial.println(linesState[i]);
+    Serial.println(pgmLinesState[i]);
   }
 }
 
 //Return true if lineNo was valid, and its value changed
-bool updateLineState(int lineNo, bool state) {
-  //Check if we're listening to this line (find index of element in linesToListenTo by value)
-  int lineIndex = getLineIndex(lineNo);
+bool updatePgmLineState(int lineNo, bool state) {
+  //Check if we're listening to this line (find index of element in pgmLinesToListenTo by value)
+  int lineIndex = getPgmLineIndex(lineNo);
   if (lineIndex > -1) {    
     //Line was found
-    if (linesState[lineIndex] != state) {
+    if (pgmLinesState[lineIndex] != state) {
       //State has changed
-      linesState[lineIndex] = state;
+      pgmLinesState[lineIndex] = state;
       return true;
     }
   }  
   return false;
 }
 
+//Return true if lineNo was valid, and its value changed
+bool updatePvwLineState(int lineNo, bool state) {
+  //Check if we're listening to this line (find index of element in pvwLinesToListenTo by value)
+  int lineIndex = getPvwLineIndex(lineNo);
+  if (lineIndex > -1) {    
+    //Line was found
+    if (pvwLinesState[lineIndex] != state) {
+      //State has changed
+      pvwLinesState[lineIndex] = state;
+      return true;
+    }
+  }  
+  return false;
+}
 
 WiFiClient espClient;
 PubSubClient client(espClient);
-long lastMsg = 0;
-char msg[50];
-int value = 0;
+
 
 
 // LED Pin
@@ -109,8 +149,6 @@ void callback(char* topic, byte* message, unsigned int length) {
     String tallyLineStr = topicStr.substring(17, topicStr.indexOf("."));    
     int lineNo = tallyLineStr.toInt();
 
-
-
     //Parse message JSON into data object
     DynamicJsonDocument data(1024);
     deserializeJson(data, messageStr);
@@ -119,19 +157,33 @@ void callback(char* topic, byte* message, unsigned int length) {
     bool state = !data["data"]["status"]["value"];
 
     //Update the line (returns false if line is not auditioned or value didn't change)
-    if (updateLineState(lineNo, state)) {
-      const bool newLightStatus = getLightStatus();
-      if (lightStatus != newLightStatus) {
+    if (updatePgmLineState(lineNo, state)) {
+      const bool newPgmLightStatus = getPgmLightStatus();
+      if (pgmLightStatus != newPgmLightStatus) {
         //Light status changed
-        lightStatus = newLightStatus;
-        Serial.print("Light: ");
-        Serial.println(lightStatus);
-        //Drive light:
-        digitalWrite(pinRed, lightStatus);
-        digitalWrite(pinGreen, !lightStatus);
+        pgmLightStatus = newPgmLightStatus;
+        Serial.print("PGM: ");
+        Serial.println(pgmLightStatus);
+        //Drive program light:
+        digitalWrite(pinRed, pgmLightStatus);
+        if (pgmLightStatus) {
+          //Program light is on, turn off pvw light regardless of line status
+          digitalWrite(pinGreen, false);
+        }
       }
     }
 
+    if (updatePvwLineState(lineNo, state)) {
+      const bool newPvwLightStatus = getPvwLightStatus();
+      if (pvwLightStatus != newPvwLightStatus) {
+        //Light status changed
+        pvwLightStatus = newPvwLightStatus;
+        Serial.print("PVW: ");
+        Serial.println(pvwLightStatus);
+        //Drive preview light (only if program light is off):        
+        digitalWrite(pinGreen, !pgmLightStatus && pvwLightStatus);
+      }
+    }
   }
 }
 
@@ -180,6 +232,9 @@ void setup_wifi() {
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
 }
+
+
+long lastMsg = 0; //Timestamp for loop intervals
 
 void loop() {
   if (!client.connected()) {
