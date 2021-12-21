@@ -241,8 +241,8 @@ void loop() {
     digitalWrite(pinBlue, true);
     turnLedFieldsOff();
     reconnect();
-    //On reconnect, set led fields to last known line status (not sure if this is best)
-    driveLedFields(); 
+    //Reconnect sends request for full update from controller
+    //  -> should get data momentarily to restore the tally lights
   }
   client.loop();
 
