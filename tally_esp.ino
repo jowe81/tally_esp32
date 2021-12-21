@@ -2,6 +2,9 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
+WiFiClient espClient;
+PubSubClient client(espClient);
+
 //WiFi
 const char* ssid = "wnet2305n_guest";
 const char* password = "gewitter";
@@ -11,10 +14,10 @@ const char* mqtt_server = "192.168.1.166";
 const char mqtt_topic[] = "mpct/update/#";
 
 //Tally Lines to listen to (device# on MPCT controller Tally)
-const int pgmLinesToListenTo[] = { 0, 2 }; //0: Cam 1 PGM, 2: Cam 2 PGM, 4: Cam 3 PGM
-const int pvwLinesToListenTo[] = { 1, 3 }; //1: Cam 1 PVW, 3: Cam 2 PVW, 5: Cam 3 PVW
-const int noPgmLines = 2; //Number of elements in pgmLinesToListenTo array;
-const int noPvwLines = 2; //Number of elements in pvwLinesToListenTo array;
+const int pgmLinesToListenTo[] = { 0, 2, 4 }; //0: Cam 1 PGM, 2: Cam 2 PGM, 4: Cam 3 PGM
+const int noPgmLines = 3; //Number of elements in pgmLinesToListenTo array;
+const int pvwLinesToListenTo[] = { 1, 3, 5 }; //1: Cam 1 PVW, 3: Cam 2 PVW, 5: Cam 3 PVW
+const int noPvwLines = 3; //Number of elements in pvwLinesToListenTo array;
 boolean pgmLinesState[noPgmLines]; //Store current state of program lines here
 boolean pvwLinesState[noPvwLines]; //Store current state of preview lines here
 
@@ -24,6 +27,11 @@ bool pvwLightStatus = false;
 
 //Status of blinking blue indicator
 bool blueStatus = true;
+
+//LED Pins
+const int pinRed = 16; //The Program LED Field
+const int pinGreen = 17; //The Preview LED field
+const int pinBlue = 4; //Blinking status LED
 
 //All lines off at init time
 void initLinesArrays() {
@@ -77,16 +85,6 @@ int getPvwLineIndex(int lineNo) {
   return -1;
 }
 
-//Print status of auditioned lines
-void printLinesState() {
-  Serial.println("STATE OF LINES");
-  for (int i = 0; i < noPgmLines; i++) {
-    Serial.print(pgmLinesToListenTo[i]);
-    Serial.print(":");
-    Serial.println(pgmLinesState[i]);
-  }
-}
-
 //Return true if lineNo was valid, and its value changed
 bool updatePgmLineState(int lineNo, bool state) {
   //Check if we're listening to this line (find index of element in pgmLinesToListenTo by value)
@@ -117,16 +115,21 @@ bool updatePvwLineState(int lineNo, bool state) {
   return false;
 }
 
-WiFiClient espClient;
-PubSubClient client(espClient);
+//Set fields according to line status
+void driveLedFields() {
+  //Drive program light:
+  digitalWrite(pinRed, pgmLightStatus);
+  //Drive preview light:
+  digitalWrite(pinGreen, !pgmLightStatus && pvwLightStatus);
+}
 
+//Turn both fields off
+void turnLedFieldsOff() {
+  digitalWrite(pinRed, false);
+  digitalWrite(pinGreen, false);
+}
 
-
-// LED Pin
-const int pinRed = 16; //The Program LED Field
-const int pinGreen = 17; //The Preview LED field
-const int pinBlue = 4; //Blinking status LED
-
+//Convert MQTT message to string
 String getMsgStr(byte* message, unsigned int length) {
   String messageStr;  
   for (int i = 0; i < length; i++) {
@@ -163,8 +166,6 @@ void callback(char* topic, byte* message, unsigned int length) {
       if (pgmLightStatus != newPgmLightStatus) {
         //Light status changed
         pgmLightStatus = newPgmLightStatus;
-        Serial.print("PGM: ");
-        Serial.println(pgmLightStatus);
       }
     } else if (updatePvwLineState(lineNo, state)) {
       changeOccurred = true;
@@ -172,15 +173,10 @@ void callback(char* topic, byte* message, unsigned int length) {
       if (pvwLightStatus != newPvwLightStatus) {
         //Light status changed
         pvwLightStatus = newPvwLightStatus;
-        Serial.print("PVW: ");
-        Serial.println(pvwLightStatus);
       }
     }
     if (changeOccurred) {
-        //Drive program light:
-        digitalWrite(pinRed, pgmLightStatus);
-        //Drive preview light:
-        digitalWrite(pinGreen, !pgmLightStatus && pvwLightStatus);
+        driveLedFields();
     }
   }
 }
@@ -235,13 +231,18 @@ void setup_wifi() {
 long lastMsg = 0; //Timestamp for loop intervals
 
 void loop() {
-  if (!client.connected()) {
+  //On loss of MQTT: turn blue indicator to constant on, led fields off
+  if (!client.connected()) {    
+    digitalWrite(pinBlue, true);
+    turnLedFieldsOff();
     reconnect();
+    //On reconnect, set led fields to last known line status (not sure if this is best)
+    driveLedFields(); 
   }
   client.loop();
 
   long now = millis();
-  if (now - lastMsg > 5000) {
+  if (now - lastMsg > 1000) {
     lastMsg = now;    
     //Blink the indicator
     blueStatus = !blueStatus;
