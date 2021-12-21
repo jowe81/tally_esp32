@@ -11,9 +11,12 @@ const char* mqtt_server = "192.168.1.166";
 const char mqtt_topic[] = "mpct/update/#";
 
 //Tally Lines to listen to (device# on MPCT controller Tally)
-const int linesToListenTo[] = { 0, 2, 4 }; //0: Cam 1 PGM, 2: Cam 2 PGM, 4: Cam 3 PGM
-const int noLines = 3; //Number of elements in linesToListenTo array;
+const int linesToListenTo[] = { 0, 2 }; //0: Cam 1 PGM, 2: Cam 2 PGM, 4: Cam 3 PGM
+const int noLines = 2; //Number of elements in linesToListenTo array;
 boolean linesState[noLines]; //Store current state of each line here
+
+//Keep the current status of the tally light here
+bool lightStatus = false;
 
 //All lines off at init time
 void initLinesArray() {
@@ -109,9 +112,18 @@ void callback(char* topic, byte* message, unsigned int length) {
 
     //Extract the value/state for the tally line
     bool state = !data["data"]["status"]["value"];
+
+    //Update the line (returns false if line is not auditioned or value didn't change)
     if (updateLineState(lineNo, state)) {
-      Serial.print("Light: ");
-      Serial.println(getLightStatus());
+      const bool newLightStatus = getLightStatus();
+      if (lightStatus != newLightStatus) {
+        //Light status changed
+        lightStatus = newLightStatus;
+        Serial.print("Light: ");
+        Serial.println(lightStatus);
+        //Drive light:
+        digitalWrite(ledPin, lightStatus);
+      }
     }
 
   }
