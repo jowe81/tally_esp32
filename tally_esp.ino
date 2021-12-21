@@ -18,6 +18,9 @@ boolean linesState[noLines]; //Store current state of each line here
 //Keep the current status of the tally light here
 bool lightStatus = false;
 
+//Status of blinking blue indicator
+bool blueStatus = true;
+
 //All lines off at init time
 void initLinesArray() {
   for (int i = 0; i < noLines; i++) {
@@ -80,7 +83,9 @@ int value = 0;
 
 
 // LED Pin
-const int ledPin = 2;
+const int pinRed = 16; //The Program LED Field
+const int pinGreen = 17; //The Preview LED field
+const int pinBlue = 4; //Blinking status LED
 
 String getMsgStr(byte* message, unsigned int length) {
   String messageStr;  
@@ -122,7 +127,8 @@ void callback(char* topic, byte* message, unsigned int length) {
         Serial.print("Light: ");
         Serial.println(lightStatus);
         //Drive light:
-        digitalWrite(ledPin, lightStatus);
+        digitalWrite(pinRed, lightStatus);
+        digitalWrite(pinGreen, !lightStatus);
       }
     }
 
@@ -153,7 +159,10 @@ void setup() {
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
-  pinMode(ledPin, OUTPUT);
+  //Initialize LED pins
+  pinMode(pinRed, OUTPUT);
+  pinMode(pinGreen, OUTPUT);
+  pinMode(pinBlue, OUTPUT);
 }
 
 void setup_wifi() {
@@ -181,5 +190,8 @@ void loop() {
   long now = millis();
   if (now - lastMsg > 5000) {
     lastMsg = now;    
+    //Blink the indicator
+    blueStatus = !blueStatus;
+    digitalWrite(pinBlue, blueStatus);
   }
 }
